@@ -52,6 +52,7 @@ import io.jmix.flowui.action.DialogAction;
 import io.jmix.flowui.action.list.*;
 import io.jmix.flowui.action.view.LookupSelectAction;
 import io.jmix.flowui.component.combobox.JmixComboBox;
+import io.jmix.flowui.component.genericfilter.GenericFilter;
 import io.jmix.flowui.component.grid.DataGrid;
 import io.jmix.flowui.component.upload.FileUploadField;
 import io.jmix.flowui.data.grid.ContainerDataGridItems;
@@ -161,9 +162,12 @@ public class EntityInspectorListView extends StandardListView<Object> {
     protected Downloader downloader;
 
     protected DataGrid<Object> entitiesDataGrid;
+    protected GenericFilter entitiesGenericFilter;
+
     protected MetaClass selectedMeta;
     protected CollectionLoader entitiesDl;
     protected CollectionContainer entitiesDc;
+
     protected String entityName;
     protected boolean isDialogMode = true;
 
@@ -262,7 +266,26 @@ public class EntityInspectorListView extends StandardListView<Object> {
                 getContent().indexOf(lookupActionsLayout),
                 entitiesDataGrid);
 
+        if (entitiesGenericFilter != null) {
+            getContent().remove(entitiesGenericFilter);
+        }
+
+        entitiesGenericFilter = createGenericFilter();
+
+        getContent().addComponentAtIndex(
+                getContent().indexOf(buttonsPanel),
+                entitiesGenericFilter
+        );
+
         entitiesDataGrid.addSelectionListener(this::entitiesDataGridSelectionListener);
+    }
+
+    protected GenericFilter createGenericFilter() {
+        GenericFilter genericFilter = uiComponents.create(GenericFilter.class);
+        genericFilter.setId("genericFilter");
+        genericFilter.setDataLoader(entitiesDl);
+
+        return genericFilter;
     }
 
     protected void showEntities() {
