@@ -65,6 +65,7 @@ import io.jmix.flowui.kit.action.ActionVariant;
 import io.jmix.flowui.kit.component.ComponentUtils;
 import io.jmix.flowui.kit.component.button.JmixButton;
 import io.jmix.flowui.kit.component.dropdownbutton.DropdownButton;
+import io.jmix.flowui.kit.component.upload.event.FileUploadSucceededEvent;
 import io.jmix.flowui.model.CollectionContainer;
 import io.jmix.flowui.model.CollectionLoader;
 import io.jmix.flowui.model.DataComponents;
@@ -327,7 +328,6 @@ public class EntityInspectorListView extends StandardListView<Object> {
         }
     }
 
-
     protected CollectionContainer createContainer(MetaClass meta) {
         entitiesDc = dataComponents.createCollectionContainer(meta.getJavaClass());
         FetchPlan fetchPlan = InspectorFetchPlanBuilder.of(getApplicationContext(), meta.getJavaClass())
@@ -340,15 +340,15 @@ public class EntityInspectorListView extends StandardListView<Object> {
         entitiesDl.setContainer(entitiesDc);
 
         switch (Objects.requireNonNull(showMode.getValue())) {
-            case ALL:
+            case ALL -> {
                 entitiesDl.setHint(PersistenceHints.SOFT_DELETION, false);
                 entitiesDl.setQuery(String.format(BASE_SELECT_QUERY, meta.getName()));
-                break;
-            case NON_REMOVED:
+            }
+            case NON_REMOVED -> {
                 entitiesDl.setHint(PersistenceHints.SOFT_DELETION, true);
                 entitiesDl.setQuery(String.format(BASE_SELECT_QUERY, meta.getName()));
-                break;
-            case REMOVED:
+            }
+            case REMOVED -> {
                 if (metadataTools.isSoftDeletable(meta.getJavaClass())) {
                     entitiesDl.setHint(PersistenceHints.SOFT_DELETION, false);
                     entitiesDl.setQuery(
@@ -361,8 +361,9 @@ public class EntityInspectorListView extends StandardListView<Object> {
                 } else {
                     entitiesDl.setLoadDelegate(loadContext -> Collections.emptyList());
                 }
-                break;
-            default:
+            }
+            default -> {
+            }
         }
 
         return entitiesDc;
@@ -425,44 +426,7 @@ public class EntityInspectorListView extends StandardListView<Object> {
         importUpload.setAcceptedFileTypes(".json", ".zip");
         importUpload.setUploadIcon(VaadinIcon.UPLOAD.create());
         importUpload.setUploadText(messages.getMessage(EntityInspectorListView.class, "import"));
-
-        importUpload.addFileUploadSucceededListener(event -> {
-            byte[] fileBytes = importUpload.getValue();
-            String fileName = event.getFileName();
-
-            try {
-                Collection<Object> importedEntities;
-
-                if (JSON.getFileExt().equals(Files.getFileExtension(fileName))) {
-                    String content = new String(Objects.requireNonNull(fileBytes), StandardCharsets.UTF_8);
-                    importedEntities = entityImportExport.importEntitiesFromJson(content,
-                            createEntityImportPlan(content, selectedMeta));
-                } else {
-                    importedEntities = entityImportExport.importEntitiesFromZIP(Objects.requireNonNull(fileBytes),
-                            createEntityImportPlan(selectedMeta));
-                }
-
-                String importSuccessfulMessage = messages.formatMessage(EntityInspectorListView.class,
-                        "importSuccessful", importedEntities.size());
-
-                notifications.create(importSuccessfulMessage)
-                        .withType(Notifications.Type.SUCCESS)
-                        .show();
-
-            } catch (Exception e) {
-                String importFailedHeader = messages.getMessage(EntityInspectorListView.class, "importFailedHeader");
-                String importFailedMessage = messages.formatMessage(EntityInspectorListView.class, "importFailedMessage",
-                        fileName, nullToEmpty(e.getMessage()));
-
-                notifications.create(importFailedHeader, importFailedMessage)
-                        .withType(Notifications.Type.ERROR)
-                        .show();
-
-                log.error("Entities import error", e);
-            }
-
-            entitiesDl.load();
-        });
+        importUpload.addFileUploadSucceededListener(this::fileUploadSucceededHandler);
 
         Action showEntityInfoAction = createShowEntityInfoAction(dataGrid);
         dataGrid.addAction(showEntityInfoAction);
@@ -561,7 +525,6 @@ public class EntityInspectorListView extends StandardListView<Object> {
         return editAction;
     }
 
-
     protected JmixButton createRestoreButton(DataGrid<Object> dataGrid) {
         JmixButton restoreButton = uiComponents.create(JmixButton.class);
         ItemTrackingAction restoreAction = actions.create(ItemTrackingAction.ID, RESTORE_ACTION_ID);
@@ -609,7 +572,7 @@ public class EntityInspectorListView extends StandardListView<Object> {
 
     protected void showRestoreDialog() {
         Set<Object> entityList = entitiesDataGrid.getSelectedItems();
-        if (entityList.size() > 0) {
+        if (!entityList.isEmpty()) {
             if (metadataTools.isSoftDeletable(selectedMeta.getJavaClass())) {
                 showOptionDialog(
                         messages.getMessage("dialogs.Confirmation"),
@@ -618,7 +581,6 @@ public class EntityInspectorListView extends StandardListView<Object> {
                         this::restoreOkHandler,
                         this::standardCancelHandler,
                         entityList
-
                 );
             }
         } else {
@@ -643,6 +605,43 @@ public class EntityInspectorListView extends StandardListView<Object> {
                 .open();
     }
 
+    protected void fileUploadSucceededHandler(FileUploadSucceededEvent<?> event) {
+        byte[] fileBytes = ((FileUploadField) event.getSource()).getValue();
+        String fileName = event.getFileName();
+
+        try {
+            Collection<Object> importedEntities;
+
+            if (JSON.getFileExt().equals(Files.getFileExtension(fileName))) {
+                String content = new String(Objects.requireNonNull(fileBytes), StandardCharsets.UTF_8);
+                importedEntities = entityImportExport.importEntitiesFromJson(content,
+                        createEntityImportPlan(content, selectedMeta));
+            } else {
+                importedEntities = entityImportExport.importEntitiesFromZIP(Objects.requireNonNull(fileBytes),
+                        createEntityImportPlan(selectedMeta));
+            }
+
+            String importSuccessfulMessage = messages.formatMessage(EntityInspectorListView.class,
+                    "importSuccessful", importedEntities.size());
+
+            notifications.create(importSuccessfulMessage)
+                    .withType(Notifications.Type.SUCCESS)
+                    .show();
+
+        } catch (Exception e) {
+            String importFailedHeader = messages.getMessage(EntityInspectorListView.class, "importFailedHeader");
+            String importFailedMessage = messages.formatMessage(EntityInspectorListView.class, "importFailedMessage",
+                    fileName, nullToEmpty(e.getMessage()));
+
+            notifications.create(importFailedHeader, importFailedMessage)
+                    .withType(Notifications.Type.ERROR)
+                    .show();
+
+            log.error("Entities import error", e);
+        }
+
+        entitiesDl.load();
+    }
 
     protected void wipeOutOkHandler(ActionPerformedEvent actionPerformedEvent, Set<Object> entityList) {
         dataManager.save(
@@ -676,6 +675,8 @@ public class EntityInspectorListView extends StandardListView<Object> {
 
             if (metaClass == null) {
                 getContent().remove(entitiesDataGrid);
+                getContent().remove(entitiesGenericFilter);
+                buttonsPanel.removeAll();
 
                 //to remove the current entityName param and restore showMode param
                 routeSupport.setQueryParameters(ui, QueryParameters.of(QUERY_PARAM_MODE, showMode.getValue().getId()));
@@ -734,19 +735,13 @@ public class EntityInspectorListView extends StandardListView<Object> {
 
         for (MetaProperty metaProperty : metaClass.getProperties()) {
             switch (metaProperty.getType()) {
-                case DATATYPE:
-                case ENUM:
-                    fetchPlanBuilder.add(metaProperty.getName());
-                    break;
-                case ASSOCIATION:
-                case COMPOSITION:
-                case EMBEDDED:
+                case DATATYPE, ENUM -> fetchPlanBuilder.add(metaProperty.getName());
+                case ASSOCIATION, COMPOSITION, EMBEDDED -> {
                     FetchPlan local = fetchPlanRepository.getFetchPlan(metaProperty.getRange().asClass(),
                             FetchPlan.LOCAL);
                     fetchPlanBuilder.add(metaProperty.getName(), local.getName());
-                    break;
-                default:
-                    throw new IllegalStateException("unknown property type");
+                }
+                default -> throw new IllegalStateException("unknown property type");
             }
         }
 
@@ -765,16 +760,14 @@ public class EntityInspectorListView extends StandardListView<Object> {
             }
 
             switch (metaProperty.getType()) {
-                case ASSOCIATION:
-                case EMBEDDED:
-                case COMPOSITION:
+                case ASSOCIATION, EMBEDDED, COMPOSITION -> {
                     EntityImportPlanProperty property = entityImportPlan.getProperty(metaProperty.getName());
-
                     if (property != null) {
                         property.setReferenceImportBehaviour(ReferenceImportBehaviour.IGNORE_MISSING);
                     }
-                    break;
-                default:
+                }
+                default -> {
+                }
             }
         }
 
@@ -790,28 +783,18 @@ public class EntityInspectorListView extends StandardListView<Object> {
             }
 
             switch (metaProperty.getType()) {
-                case DATATYPE:
-                case ENUM:
-                    planBuilder.addLocalProperty(metaProperty.getName());
-                    break;
-                case EMBEDDED:
-                case ASSOCIATION:
-                case COMPOSITION:
+                case DATATYPE, ENUM -> planBuilder.addLocalProperty(metaProperty.getName());
+                case EMBEDDED, ASSOCIATION, COMPOSITION -> {
                     Range.Cardinality cardinality = metaProperty.getRange().getCardinality();
 
-                    if (cardinality == Range.Cardinality.MANY_TO_ONE) {
-                        planBuilder.addManyToOneProperty(metaProperty.getName(), ReferenceImportBehaviour.IGNORE_MISSING);
-                    } else if (cardinality == Range.Cardinality.ONE_TO_ONE) {
-                        planBuilder.addOneToOneProperty(metaProperty.getName(), ReferenceImportBehaviour.IGNORE_MISSING);
-                    } else if (cardinality == Range.Cardinality.ONE_TO_MANY) {
-                        planBuilder.addOneToOneProperty(metaProperty.getName(), ReferenceImportBehaviour.IGNORE_MISSING);
-                    } else if (cardinality == Range.Cardinality.NONE) {
-                        planBuilder.addOneToOneProperty(metaProperty.getName(), ReferenceImportBehaviour.IGNORE_MISSING);
+                    switch (cardinality) {
+                        case MANY_TO_ONE -> planBuilder.addManyToOneProperty(metaProperty.getName(),
+                                ReferenceImportBehaviour.IGNORE_MISSING);
+                        case ONE_TO_ONE, ONE_TO_MANY, NONE -> planBuilder.addOneToOneProperty(metaProperty.getName(),
+                                ReferenceImportBehaviour.IGNORE_MISSING);
                     }
-
-                    break;
-                default:
-                    throw new IllegalStateException("unknown property type");
+                }
+                default -> throw new IllegalStateException("Unknown property type");
             }
         }
 
